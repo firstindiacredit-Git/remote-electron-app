@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Remote Desktop Host</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/antd/4.24.8/antd.min.css" />
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f2f5;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    .layout {
+      min-height: 100vh;
+    }
+    
+    .header {
+      background: #fff;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      height: 64px;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+    }
+    
+    .logo-icon {
+      color: #ff4d4f;
+      font-size: 24px;
+      margin-right: 12px;
+    }
+    
+    .content {
+      padding: 24px;
+    }
+    
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 12px;
+      border-radius: 16px;
+      font-size: 14px;
+    }
+    
+    .footer {
+      text-align: center;
+      background: #f0f2f5;
+      color: rgba(0, 0, 0, 0.45);
+      padding: 12px 0;
+    }
+    
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+    
+    .connected {
+      background-color: #52c41a;
+    }
+    
+    .disconnected {
+      background-color: #f5222d;
+    }
+    
+    .reconnecting {
+      background-color: #faad14;
+    }
+    
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
+    }
+    
+    .button {
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .primary-button {
+      background-color: #1890ff;
+      color: white;
+    }
+    
+    .danger-button {
+      background-color: #ff4d4f;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="header">
+      <div class="logo">
+        <span class="logo-icon">💻</span>
+        <h2 style="margin: 0;">Remote Desktop Host</h2>
+      </div>
+      <div class="status-pill" id="connection-status-pill">
+        <span class="dot disconnected" id="status-dot"></span>
+        <span id="connection-status">Disconnected</span>
+      </div>
+    </div>
+    
+    <div class="content">
+      <div class="card">
+        <h3>Connection Information</h3>
+        <p>Your ID: <strong id="connectionId">Connecting...</strong></p>
+        <p>Share this ID with anyone who wants to control your computer.</p>
+        <div class="actions">
+          <button class="button primary-button" id="copy-id">
+            <span>📋</span> Copy ID
+          </button>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h3>Session Status</h3>
+        <p id="status-message">Waiting for connection...</p>
+        <div class="actions">
+          <button class="button danger-button" id="disconnect-btn">
+            <span>⏹</span> Disconnect Client
+          </button>
+        </div>
+      </div>
+    </div>
+    
+    <div class="footer">
+      Remote Desktop App ©<span id="current-year"></span> | All Rights Reserved
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    
+    // Set current year
+    document.getElementById('current-year').textContent = new Date().getFullYear();
+    
+    // Connection ID handling
+    ipcRenderer.on('connection-id', (event, id) => {
+      document.getElementById('connectionId').textContent = id;
+    });
+    
+    // Status message handling
+    ipcRenderer.on('status-update', (event, message) => {
+      document.getElementById('status-message').textContent = message;
+    });
+
+    // Update connection status initially
+    const statusDot = document.getElementById('status-dot');
+    const connectionStatus = document.getElementById('connection-status');
+    const connectionStatusPill = document.getElementById('connection-status-pill');
+    
+    statusDot.className = 'dot disconnected';
+    connectionStatus.textContent = 'Disconnected';
+    connectionStatusPill.style.backgroundColor = '#fff1f0';
+    connectionStatusPill.style.border = '1px solid #ffccc7';
+
+    // Handle connect event
+    ipcRenderer.on('connect', () => {
+      statusDot.className = 'dot connected';
+      connectionStatus.textContent = 'Connected';
+      connectionStatusPill.style.backgroundColor = '#f6ffed';
+      connectionStatusPill.style.border = '1px solid #b7eb8f';
+    });
+
+    // Handle disconnect event
+    ipcRenderer.on('disconnect', () => {
+      statusDot.className = 'dot disconnected';
+      connectionStatus.textContent = 'Disconnected';
+      connectionStatusPill.style.backgroundColor = '#fff1f0';
+      connectionStatusPill.style.border = '1px solid #ffccc7';
+    });
+
+    // Handle reconnection attempt
+    ipcRenderer.on('reconnect_attempt', () => {
+      statusDot.className = 'dot reconnecting';
+      connectionStatus.textContent = 'Reconnecting...';
+      connectionStatusPill.style.backgroundColor = '#fffbe6';
+      connectionStatusPill.style.border = '1px solid #ffe58f';
+    });
+    
+    // Copy ID functionality
+    document.getElementById('copy-id').addEventListener('click', () => {
+      const id = document.getElementById('connectionId').textContent;
+      if (id && id !== 'Connecting...') {
+        navigator.clipboard.writeText(id).then(() => {
+          alert('ID copied to clipboard!');
+        }).catch(err => {
+          console.error('Failed to copy: ', err);
+        });
+      }
+    });
+    
+    // Disconnect client functionality
+    document.getElementById('disconnect-btn').addEventListener('click', () => {
+      ipcRenderer.send('disconnect-client');
+    });
+  </script>
+</body>
+</html>
