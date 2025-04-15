@@ -24,22 +24,24 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'index.html'));
 
   // Connect to the socket.io server with reconnection settings
-  const socket = io("http://15.206.194.12:8080", {
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
-    autoConnect: true,
-    path: '/socket.io',
-    transports: ['polling', 'websocket'],
-    upgrade: true,
-    rememberUpgrade: true,
-    forceJSONP: false,
-    extraHeaders: {
-      "User-Agent": "ElectronApp/1.0"
-    }
-  });
+  const socket = io(
+    "http://15.206.194.12:8080",
+    {
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 60000, // Increase timeout
+      autoConnect: true,
+      path: '/socket.io',
+      transports: ['websocket', 'polling'], // Try websocket first
+      upgrade: true,
+      rememberUpgrade: true,
+      forceJSONP: false,
+      extraHeaders: {
+        "User-Agent": "ElectronApp/1.0"
+      }
+    });
   
   // Store socket reference globally
   globalSocket = socket;
@@ -47,24 +49,43 @@ function createWindow() {
   let screenShareInterval = null;
   let pingInterval = null;
 
+  // Track if session code was received
+  let sessionCodeReceived = false;
+
   // Handle connection
   socket.on("connect", () => {
     console.log("Connected as host with ID:", socket.id);
     
     // Get computer name
-    const computerName = os.hostname();
+    const computerName = os.hostname() || "Unknown Computer";
     
     win.webContents.send('connection-id', socket.id);
     win.webContents.send('connect');
+    win.webContents.send('status-update', 'Connected to server, sending host-ready...');
     
-    // Emit host-ready with computer name
-    socket.emit("host-ready", { computerName });
+    // Wait a little before sending host-ready
+    setTimeout(() => {
+      // Emit host-ready with computer name
+      console.log("Sending host-ready event with computer name:", computerName);
+      socket.emit("host-ready", { computerName });
+      
+      // Additional attempt after a delay
+      setTimeout(() => {
+        if (!sessionCodeReceived) {
+          console.log("Re-sending host-ready event...");
+          socket.emit("host-ready", { computerName });
+        }
+      }, 5000);
+    }, 1000);
     
     // Setup ping interval to keep connection alive
     if (pingInterval) clearInterval(pingInterval);
     pingInterval = setInterval(() => {
-      socket.emit("keep-alive");
-    }, 10000); // Send a ping every 10 seconds
+      if (socket.connected) {
+        console.log("Sending keep-alive ping");
+        socket.emit("keep-alive");
+      }
+    }, 5000); // More frequent pings
   });
 
   // Handle controller connection
@@ -265,41 +286,61 @@ function createWindow() {
     }
   });
 
-  // Add better error handling
-  socket.on('connect_error', (error) => {
-    console.error("Connection error:", error.message);
-    win.webContents.send('status-update', `Connection error: ${error.message}`);
-    win.webContents.send('disconnect');
+  // Handle session code from server
+  socket.on("session-code", (code) => {
+    console.log("Received session code from server:", code);
+    sessionCodeReceived = true;
+    win.webContents.send('session-code', code);
+    win.webContents.send('status-update', 'Session code received!');
   });
 
-  socket.on('connect_timeout', () => {
-    console.error("Connection timeout");
-    win.webContents.send('status-update', 'Connection timeout');
-    win.webContents.send('disconnect');
+  // Handle connection requests
+  socket.on("connection-request", (data) => {
+    console.log("Connection request from:", data.clientId);
+    win.webContents.send('connection-request', data);
   });
 
-  socket.on('reconnect_attempt', (attemptNumber) => {
-    console.log(`Reconnection attempt #${attemptNumber}`);
-    win.webContents.send('status-update', `Reconnecting (attempt ${attemptNumber})...`);
+  // Handle connection response from renderer
+  ipcMain.on('respond-to-connection', (event, data) => {
+    if (socket.connected) {
+      socket.emit("connection-response", data);
+      
+      if (data.accepted) {
+        currentClientId = data.clientId;
+        win.webContents.send('status-update', `Accepted connection from ${data.clientId}`);
+      } else {
+        win.webContents.send('status-update', 'Connection rejected');
+      }
+    } else {
+      win.webContents.send('status-update', 'Not connected to server');
+    }
+  });
+
+  // Add reconnect handlers
+  socket.on('reconnect_attempt', (attempt) => {
+    console.log(`Reconnection attempt #${attempt}`);
+    win.webContents.send('status-update', `Reconnecting (attempt ${attempt})...`);
     win.webContents.send('reconnect_attempt');
   });
 
-  socket.on('disconnect', (reason) => {
-    console.log(`Disconnected: ${reason}`);
-    currentClientId = null;
-    if (screenShareInterval) {
-      clearInterval(screenShareInterval);
-      screenShareInterval = null;
-    }
-    win.webContents.send('status-update', 'Connection lost. Attempting to reconnect...');
-    win.webContents.send('disconnect');
+  socket.on('reconnect', () => {
+    console.log("Reconnected to server");
+    win.webContents.send('status-update', 'Reconnected to server');
     
-    if (reason === 'io server disconnect') {
-      // Server disconnected us, try to reconnect manually
-      setTimeout(() => {
-        socket.connect();
-      }, 1000);
-    }
+    // Reset flag
+    sessionCodeReceived = false;
+    
+    // Re-send host-ready on reconnection
+    const computerName = os.hostname() || "Unknown Computer";
+    console.log("Re-sending host-ready after reconnection");
+    socket.emit("host-ready", { computerName });
+  });
+
+  // Add explicit disconnect handler with more info
+  socket.on('disconnect', (reason) => {
+    console.log(`Disconnected from server: ${reason}`);
+    win.webContents.send('status-update', `Disconnected: ${reason}. Reconnecting...`);
+    win.webContents.send('disconnect');
   });
 
   // Handle window close
@@ -353,6 +394,17 @@ function createWindow() {
       // Acknowledge the disconnect to the client
       socket.emit("host-disconnect-ack", { to: data.from });
     }
+  });
+
+  // Add explicit error handler
+  socket.on("error", (error) => {
+    console.error("Socket error:", error);
+    win.webContents.send('status-update', `Socket error: ${error.message}`);
+  });
+
+  socket.on("connect_error", (error) => {
+    console.error("Connection error:", error);
+    win.webContents.send('status-update', `Connection error: ${error.message}`);
   });
 }
 

@@ -130,11 +130,11 @@
     <div class="content">
       <div class="card">
         <h3>Connection Information</h3>
-        <p>Your ID: <strong id="connectionId">Connecting...</strong></p>
-        <p>Share this ID with anyone who wants to control your computer.</p>
+        <p>Your Session Code: <strong id="sessionCode">Generating...</strong></p>
+        <p>Share this code with anyone who wants to control your computer.</p>
         <div class="actions">
-          <button class="button primary-button" id="copy-id">
-            <span>📋</span> Copy ID
+          <button class="button primary-button" id="copy-code">
+            <span>📋</span> Copy Code
           </button>
         </div>
       </div>
@@ -155,6 +155,18 @@
     </div>
   </div>
 
+  <div id="connection-request-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7);">
+    <div style="background-color: white; margin: 15% auto; padding: 20px; border-radius: 8px; width: 400px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); text-align: center;">
+      <h3>Connection Request</h3>
+      <p>Someone is trying to connect to your computer.</p>
+      <p>Connection ID: <strong id="request-client-id"></strong></p>
+      <div style="display: flex; justify-content: center; gap: 16px; margin-top: 24px;">
+        <button class="button primary-button" id="accept-connection">Accept</button>
+        <button class="button danger-button" id="reject-connection">Reject</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const { ipcRenderer } = require('electron');
     
@@ -163,7 +175,7 @@
     
     // Connection ID handling
     ipcRenderer.on('connection-id', (event, id) => {
-      document.getElementById('connectionId').textContent = id;
+      console.log("Connection ID:", id);
     });
     
     // Status message handling
@@ -205,18 +217,59 @@
       connectionStatusPill.style.border = '1px solid #ffe58f';
     });
     
-    // Copy ID functionality
-    document.getElementById('copy-id').addEventListener('click', () => {
-      const id = document.getElementById('connectionId').textContent;
-      if (id && id !== 'Connecting...') {
-        navigator.clipboard.writeText(id).then(() => {
-          alert('ID copied to clipboard!');
+    // Add the new functions to handle session codes
+    let pendingClientId = null;
+    
+    // Session code handling
+    ipcRenderer.on('session-code', (event, code) => {
+      document.getElementById('sessionCode').textContent = code;
+    });
+    
+    // Copy session code functionality
+    document.getElementById('copy-code').addEventListener('click', () => {
+      const code = document.getElementById('sessionCode').textContent;
+      if (code && code !== 'Generating...') {
+        navigator.clipboard.writeText(code).then(() => {
+          alert('Code copied to clipboard!');
         }).catch(err => {
           console.error('Failed to copy: ', err);
         });
       }
     });
     
+    // Connection request handling
+    ipcRenderer.on('connection-request', (event, data) => {
+      document.getElementById('request-client-id').textContent = data.clientId;
+      document.getElementById('connection-request-modal').style.display = 'block';
+      pendingClientId = data.clientId;
+    });
+    
+    // Accept connection
+    document.getElementById('accept-connection').addEventListener('click', () => {
+      if (pendingClientId) {
+        ipcRenderer.send('respond-to-connection', {
+          clientId: pendingClientId,
+          accepted: true
+        });
+        document.getElementById('connection-request-modal').style.display = 'none';
+        document.getElementById('status-message').textContent = `Accepted connection from ${pendingClientId}`;
+        pendingClientId = null;
+      }
+    });
+    
+    // Reject connection
+    document.getElementById('reject-connection').addEventListener('click', () => {
+      if (pendingClientId) {
+        ipcRenderer.send('respond-to-connection', {
+          clientId: pendingClientId,
+          accepted: false
+        });
+        document.getElementById('connection-request-modal').style.display = 'none';
+        document.getElementById('status-message').textContent = 'Connection rejected';
+        pendingClientId = null;
+      }
+    });
+
     // Disconnect client functionality
     document.getElementById('disconnect-btn').addEventListener('click', () => {
       ipcRenderer.send('disconnect-client');
