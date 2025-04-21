@@ -66,7 +66,7 @@ function createWindow() {
     // Wait a little before sending host-ready
     setTimeout(() => {
       // Emit host-ready with computer name
-      console.log("Sending host-ready event with computer name:", computerName);
+      // console.log("Sending host-ready event with computer name:", computerName);
       socket.emit("host-ready", { computerName });
       
       // Additional attempt after a delay
@@ -288,7 +288,7 @@ function createWindow() {
 
   // Handle session code from server
   socket.on("session-code", (code) => {
-    console.log("Received session code from server:", code);
+    // console.log("Received session code from server:", code);
     sessionCodeReceived = true;
     win.webContents.send('session-code', code);
     win.webContents.send('status-update', 'Session code received!');
@@ -345,13 +345,16 @@ function createWindow() {
 
   // Handle window close
   win.on('closed', () => {
-    if (screenShareInterval) {
-      clearInterval(screenShareInterval);
+    // Only clean up if we're not deliberately exiting
+    if (!global.isAppQuitting) {
+      if (screenShareInterval) {
+        clearInterval(screenShareInterval);
+      }
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+      // Don't disconnect socket here, as it might cause the error
     }
-    if (pingInterval) {
-      clearInterval(pingInterval);
-    }
-    socket.disconnect();
   });
   
   // Handle disconnect client request from renderer
@@ -409,7 +412,12 @@ function createWindow() {
 }
 
 // Initialize the app when Electron is ready
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  // Set initial quitting state
+  global.isAppQuitting = false;
+  
+  createWindow();
+});
 
 // Quit when all windows are closed
 app.on('window-all-closed', () => {
@@ -422,6 +430,50 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+// Add this to main.js
+ipcMain.on('close-app', () => {
+  app.quit();
+});
+
+// Add this to main.js to safely close the app
+ipcMain.on('close-app-safely', () => {
+  // Clean up any active connection if it exists
+  if (globalSocket && globalSocket.connected && currentClientId) {
+    console.log(`Disconnecting client before shutdown: ${currentClientId}`);
+    globalSocket.emit("disconnect-client", currentClientId);
+    currentClientId = null;
+  }
+  
+  // Allow a brief moment for any socket messages to be sent
+  setTimeout(() => {
+    // Safely disconnect the socket if it exists
+    if (globalSocket) {
+      console.log("Closing socket connection...");
+      globalSocket.removeAllListeners();
+      globalSocket.disconnect();
+      globalSocket = null;
+    }
+    
+    // Now quit the app
+    console.log("Quitting application...");
+    app.quit();
+  }, 300);
+});
+
+// Force quit without attempting to disconnect socket again
+ipcMain.on('force-quit-app', () => {
+  // Set a flag to indicate we're deliberately closing
+  global.isAppQuitting = true;
+  
+  // Force quit the app
+  app.exit(0); // Using exit(0) instead of quit() for a more forceful exit
+});
+
+// Add this near the start of your app initialization
+app.on('before-quit', () => {
+  global.isAppQuitting = true;
 });
 
 module.exports = { createWindow };
