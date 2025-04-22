@@ -462,6 +462,25 @@
         font-size: 12px;
       }
     }
+    
+    /* Add new styles for password modal */
+    .password-input {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: white;
+      padding: 12px;
+      width: 100%;
+      margin-top: 15px;
+      margin-bottom: 20px;
+      font-size: 16px;
+    }
+    
+    .password-input:focus {
+      outline: none;
+      border-color: rgba(0, 128, 255, 0.4);
+      box-shadow: 0 0 0 2px rgba(0, 128, 255, 0.1);
+    }
   </style>
 </head>
 <body>
@@ -502,9 +521,12 @@
           <p id="status-message">Waiting for connection...</p>
           <div class="info-text">
             <span class="feature-icon">ℹ️</span>
-            <p style="margin: 0;">When someone connects, you'll see their details here. You can disconnect them at any time.</p>
+            <p style="margin: 0;">When someone connects, you'll see their details here. You can set a permanent password or disconnect them at any time.</p>
           </div>
           <div class="actions">
+            <button class="button primary-button" id="set-password-btn" style="display: none;">
+              <span>🔐</span> Set Password
+            </button>
             <button class="button danger-button" id="disconnect-btn">
               <span>⏹</span> Disconnect Client
             </button>
@@ -527,7 +549,26 @@
       </div>
       <div class="cta-buttons">
         <button class="button primary-button" id="accept-connection">Accept</button>
+        <button class="button primary-button" id="accept-with-password" style="background: rgba(0, 255, 255, 0.1); color: #00FFFF; border: 1px solid rgba(0, 255, 255, 0.3);">
+          Accept & Set Password
+        </button>
         <button class="button danger-button" id="reject-connection">Reject</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Password Modal -->
+  <div id="password-modal" class="modal-overlay">
+    <div class="modal-container">
+      <h3 style="margin-bottom: 15px; color: white; font-size: 22px;">Set Access Password</h3>
+      <div class="connection-info">
+        <p style="margin-bottom: 5px; color: rgba(255,255,255,0.7);">Create a password for this connection</p>
+        <p style="margin-bottom: 15px; color: white;">This will allow the client to reconnect without approval</p>
+        <input type="password" id="access-password" class="password-input" placeholder="Enter password" minlength="4">
+      </div>
+      <div class="cta-buttons">
+        <button class="button primary-button" id="save-password">Save Password</button>
+        <button class="button danger-button" id="cancel-password">Cancel</button>
       </div>
     </div>
   </div>
@@ -546,6 +587,13 @@
     // Status message handling
     ipcRenderer.on('status-update', (event, message) => {
       document.getElementById('status-message').textContent = message;
+      
+      // Show set password button when connected
+      if (message.includes('Accepted connection from')) {
+        document.getElementById('set-password-btn').style.display = 'inline-flex';
+      } else if (message.includes('disconnected') || message.includes('Disconnected')) {
+        document.getElementById('set-password-btn').style.display = 'none';
+      }
     });
 
     // Update connection status initially
@@ -572,6 +620,7 @@
       connectionStatus.textContent = 'Disconnected';
       connectionStatusPill.style.backgroundColor = 'rgba(255, 77, 79, 0.1)';
       connectionStatusPill.style.border = '1px solid rgba(255, 77, 79, 0.2)';
+      document.getElementById('set-password-btn').style.display = 'none';
     });
 
     // Handle reconnection attempt
@@ -623,11 +672,31 @@
       if (pendingClientId) {
         ipcRenderer.send('respond-to-connection', {
           clientId: pendingClientId,
-          accepted: true
+          accepted: true,
+          setPassword: false
         });
-        hideModal();
+        hideModal('connection-request-modal');
         document.getElementById('status-message').textContent = `Accepted connection from ${pendingClientId}`;
+        document.getElementById('set-password-btn').style.display = 'inline-flex';
         pendingClientId = null;
+      }
+    });
+    
+    // Accept connection with password
+    document.getElementById('accept-with-password').addEventListener('click', () => {
+      if (pendingClientId) {
+        // Accept first
+        ipcRenderer.send('respond-to-connection', {
+          clientId: pendingClientId,
+          accepted: true,
+          setPassword: true
+        });
+        hideModal('connection-request-modal');
+        document.getElementById('status-message').textContent = `Accepted connection from ${pendingClientId}`;
+        document.getElementById('set-password-btn').style.display = 'inline-flex';
+        
+        // Then show password modal
+        showPasswordModal();
       }
     });
     
@@ -638,15 +707,63 @@
           clientId: pendingClientId,
           accepted: false
         });
-        hideModal();
+        hideModal('connection-request-modal');
         document.getElementById('status-message').textContent = 'Connection rejected';
         pendingClientId = null;
       }
     });
     
-    function hideModal() {
-      const modal = document.getElementById('connection-request-modal');
-      const modalContent = document.querySelector('.modal-container');
+    // Show password modal when set password button is clicked
+    document.getElementById('set-password-btn').addEventListener('click', () => {
+      showPasswordModal();
+    });
+    
+    // Save password
+    document.getElementById('save-password').addEventListener('click', () => {
+      const password = document.getElementById('access-password').value;
+      if (password.length < 4) {
+        alert('Password must be at least 4 characters');
+        return;
+      }
+      
+      ipcRenderer.send('set-access-password', { password });
+      hideModal('password-modal');
+      document.getElementById('access-password').value = '';
+    });
+    
+    // Cancel password
+    document.getElementById('cancel-password').addEventListener('click', () => {
+      hideModal('password-modal');
+      document.getElementById('access-password').value = '';
+    });
+    
+    // Password response
+    ipcRenderer.on('password-response', (event, data) => {
+      if (data.success) {
+        alert('Password set successfully! The client can now connect directly without approval.');
+      } else {
+        alert('Failed to set password: ' + data.message);
+      }
+    });
+    
+    function showPasswordModal() {
+      const modal = document.getElementById('password-modal');
+      const modalContent = modal.querySelector('.modal-container');
+      
+      modal.style.display = 'block';
+      // Trigger reflow
+      modal.offsetHeight;
+      
+      modal.classList.add('modal-visible');
+      modalContent.classList.add('modal-content-visible');
+      
+      // Focus the password input
+      document.getElementById('access-password').focus();
+    }
+    
+    function hideModal(modalId) {
+      const modal = document.getElementById(modalId);
+      const modalContent = modal.querySelector('.modal-container');
       
       modalContent.classList.remove('modal-content-visible');
       modal.classList.remove('modal-visible');

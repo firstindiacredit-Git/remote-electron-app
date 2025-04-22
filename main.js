@@ -7,6 +7,7 @@ const path = require("path");
 const os = require('os');
 const fs = require('fs');
 const { dialog } = require('electron');
+const crypto = require('crypto');
 
 let globalSocket = null;
 let currentClientId = null;
@@ -18,6 +19,45 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let recordingStartTime = null;
 let recordingClient = null;
+
+// Function to generate or retrieve the machine ID
+function getMachineId() {
+  const idFilePath = path.join(app.getPath('userData'), 'machine_id.txt');
+  
+  try {
+    // Try to read existing ID
+    if (fs.existsSync(idFilePath)) {
+      return fs.readFileSync(idFilePath, 'utf8').trim();
+    }
+    
+    // Generate a new ID if none exists
+    const cpuInfo = os.cpus()[0]?.model || '';
+    const networkInterfaces = os.networkInterfaces();
+    let macAddress = '';
+    
+    // Get first non-internal MAC address
+    Object.keys(networkInterfaces).forEach(ifname => {
+      networkInterfaces[ifname].forEach(iface => {
+        if (!iface.internal && iface.mac !== '00:00:00:00:00:00') {
+          macAddress = iface.mac;
+        }
+      });
+    });
+    
+    // Create a unique ID based on hardware info and a random component
+    const rawId = `${cpuInfo}-${macAddress}-${os.hostname()}-${Math.random()}`;
+    const machineId = crypto.createHash('md5').update(rawId).digest('hex');
+    
+    // Save the ID for future use
+    fs.writeFileSync(idFilePath, machineId);
+    
+    return machineId;
+  } catch (err) {
+    console.error("Error generating machine ID:", err);
+    // Fallback to a random ID if we couldn't generate a stable one
+    return crypto.randomBytes(16).toString('hex');
+  }
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -32,6 +72,10 @@ function createWindow() {
 
   // Load the HTML file
   win.loadFile(path.join(__dirname, 'index.html'));
+
+  // Generate or retrieve machine ID
+  const machineId = getMachineId();
+  console.log("Machine ID:", machineId);
 
   // Connect to the socket.io server with reconnection settings
   const socket = io(
@@ -75,15 +119,21 @@ function createWindow() {
 
     // Wait a little before sending host-ready
     setTimeout(() => {
-      // Emit host-ready with computer name
-      // console.log("Sending host-ready event with computer name:", computerName);
-      socket.emit("host-ready", { computerName });
+      // Emit host-ready with computer name and machine ID
+      console.log("Sending host-ready with machine ID:", machineId);
+      socket.emit("host-ready", { 
+        computerName,
+        machineId 
+      });
 
       // Additional attempt after a delay
       setTimeout(() => {
         if (!sessionCodeReceived) {
           console.log("Re-sending host-ready event...");
-          socket.emit("host-ready", { computerName });
+          socket.emit("host-ready", { 
+            computerName,
+            machineId
+          });
         }
       }, 5000);
     }, 1000);
@@ -96,6 +146,56 @@ function createWindow() {
         socket.emit("keep-alive");
       }
     }, 5000); // More frequent pings
+  });
+
+  // Listen for client auto-connected events (from password auth)
+  socket.on("client-auto-connected", (data) => {
+    console.log("Client auto-connected with password:", data.clientId);
+    currentClientId = data.clientId;
+    win.webContents.send('status-update', `Client ${data.clientId} connected using saved password`);
+  });
+
+  // Handle connection requests
+  socket.on("connection-request", (data) => {
+    console.log("Connection request from:", data.clientId);
+    win.webContents.send('connection-request', data);
+  });
+
+  // Handle connection response from renderer
+  ipcMain.on('respond-to-connection', (event, data) => {
+    if (socket.connected) {
+      socket.emit("connection-response", data);
+
+      if (data.accepted) {
+        currentClientId = data.clientId;
+        win.webContents.send('status-update', `Accepted connection from ${data.clientId}`);
+      } else {
+        win.webContents.send('status-update', 'Connection rejected');
+      }
+    } else {
+      win.webContents.send('status-update', 'Not connected to server');
+    }
+  });
+
+  // Handle set password request from renderer
+  ipcMain.on('set-access-password', (event, data) => {
+    if (socket.connected && currentClientId) {
+      console.log(`Setting password for client: ${currentClientId}`);
+      socket.emit("set-access-password", {
+        password: data.password,
+        clientId: currentClientId
+      });
+    } else {
+      win.webContents.send('password-response', {
+        success: false,
+        message: 'Not connected to server or no client connected'
+      });
+    }
+  });
+
+  // Handle password response from server
+  socket.on("password-response", (data) => {
+    win.webContents.send('password-response', data);
   });
 
   // Handle controller connection
@@ -302,28 +402,6 @@ function createWindow() {
     sessionCodeReceived = true;
     win.webContents.send('session-code', code);
     win.webContents.send('status-update', 'Session code received!');
-  });
-
-  // Handle connection requests
-  socket.on("connection-request", (data) => {
-    console.log("Connection request from:", data.clientId);
-    win.webContents.send('connection-request', data);
-  });
-
-  // Handle connection response from renderer
-  ipcMain.on('respond-to-connection', (event, data) => {
-    if (socket.connected) {
-      socket.emit("connection-response", data);
-
-      if (data.accepted) {
-        currentClientId = data.clientId;
-        win.webContents.send('status-update', `Accepted connection from ${data.clientId}`);
-      } else {
-        win.webContents.send('status-update', 'Connection rejected');
-      }
-    } else {
-      win.webContents.send('status-update', 'Not connected to server');
-    }
   });
 
   // Add reconnect handlers
