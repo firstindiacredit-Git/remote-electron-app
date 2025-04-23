@@ -633,6 +633,7 @@
     
     // Add the new functions to handle session codes
     let pendingClientId = null;
+    let currentConnectedClientId = null;
     
     // Session code handling
     ipcRenderer.on('session-code', (event, code) => {
@@ -670,6 +671,8 @@
     // Accept connection
     document.getElementById('accept-connection').addEventListener('click', () => {
       if (pendingClientId) {
+        currentConnectedClientId = pendingClientId;
+        
         ipcRenderer.send('respond-to-connection', {
           clientId: pendingClientId,
           accepted: true,
@@ -685,6 +688,8 @@
     // Accept connection with password
     document.getElementById('accept-with-password').addEventListener('click', () => {
       if (pendingClientId) {
+        currentConnectedClientId = pendingClientId;
+        
         // Accept first
         ipcRenderer.send('respond-to-connection', {
           clientId: pendingClientId,
@@ -697,6 +702,8 @@
         
         // Then show password modal
         showPasswordModal();
+        
+        pendingClientId = null;
       }
     });
     
@@ -726,7 +733,10 @@
         return;
       }
       
-      ipcRenderer.send('set-access-password', { password });
+      ipcRenderer.send('set-access-password', { 
+        password,
+        clientId: currentConnectedClientId
+      });
       hideModal('password-modal');
       document.getElementById('access-password').value = '';
     });
