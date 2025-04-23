@@ -182,8 +182,8 @@ function createWindow() {
     if (socket.connected && currentClientId) {
       console.log(`Setting password for client: ${currentClientId}`);
       
-      // Store the current screen share interval status
-      const wasScreenSharingActive = !!screenShareInterval;
+      // Store the current client ID for later use
+      const clientId = currentClientId;
       
       // Emit event to set password
       socket.emit("set-access-password", {
@@ -191,45 +191,47 @@ function createWindow() {
         clientId: currentClientId
       });
       
-      // Check if screen sharing was active but got cleared by the password setting
-      if (wasScreenSharingActive) {
-        console.log("Ensuring screen sharing continues after setting password");
-        
-        // Wait a short time and then check if screen sharing is still active
-        setTimeout(() => {
-          if (!screenShareInterval) {
-            console.log("Restarting screen sharing after password was set");
-            
-            // Restart screen sharing
-            const sendScreen = async () => {
-              try {
-                const sources = await desktopCapturer.getSources({
-                  types: ['screen'],
-                  thumbnailSize: { width: 960, height: 720 }
-                });
-
-                if (sources.length > 0 && socket.connected) {
-                  const imageDataUrl = sources[0].thumbnail.toDataURL('image/jpeg', 0.3);
-                  socket.emit("screen-data", {
-                    to: currentClientId,
-                    imageData: imageDataUrl
-                  });
-                }
-              } catch (err) {
-                console.error("Error capturing screen:", err);
-              }
-            };
-
-            // Send initial screen capture
-            sendScreen();
-            
-            // Set up interval for screen sharing
-            screenShareInterval = setInterval(sendScreen, 1000);
-            
-            win.webContents.send('status-update', 'Screen sharing restarted after setting password');
+      // Force restart screen sharing after a delay
+      setTimeout(() => {
+        // Ensure the client is still connected
+        if (socket.connected && currentClientId === clientId) {
+          console.log("Restarting screen sharing after password was set");
+          
+          // Clear any existing interval
+          if (screenShareInterval) {
+            clearInterval(screenShareInterval);
+            screenShareInterval = null;
           }
-        }, 500); // Check 500ms after setting password
-      }
+          
+          // Restart screen sharing
+          const sendScreen = async () => {
+            try {
+              const sources = await desktopCapturer.getSources({
+                types: ['screen'],
+                thumbnailSize: { width: 960, height: 720 }
+              });
+
+              if (sources.length > 0 && socket.connected) {
+                const imageDataUrl = sources[0].thumbnail.toDataURL('image/jpeg', 0.3);
+                socket.emit("screen-data", {
+                  to: currentClientId,
+                  imageData: imageDataUrl
+                });
+              }
+            } catch (err) {
+              console.error("Error capturing screen:", err);
+            }
+          };
+
+          // Send initial screen capture
+          sendScreen();
+          
+          // Set up interval for screen sharing
+          screenShareInterval = setInterval(sendScreen, 1000);
+          
+          win.webContents.send('status-update', 'Screen sharing restarted after setting password');
+        }
+      }, 1000); // Wait 1 second to ensure the password is set before restarting
     } else {
       win.webContents.send('password-response', {
         success: false,
