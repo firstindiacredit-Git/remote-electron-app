@@ -179,14 +179,11 @@ function createWindow() {
 
   // Handle set password request from renderer
   ipcMain.on('set-access-password', (event, data) => {
-    // Use the provided clientId from the renderer if available, otherwise use currentClientId
-    const targetClientId = data.clientId || currentClientId;
-    
-    if (socket.connected && targetClientId) {
-      console.log(`Setting password for client: ${targetClientId}`);
+    if (socket.connected && currentClientId) {
+      console.log(`Setting password for client: ${currentClientId}`);
       socket.emit("set-access-password", {
         password: data.password,
-        clientId: targetClientId
+        clientId: currentClientId
       });
     } else {
       win.webContents.send('password-response', {
