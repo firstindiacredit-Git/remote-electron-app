@@ -148,13 +148,6 @@ function createWindow() {
     }, 5000); // More frequent pings
   });
 
-  // Listen for client auto-connected events (from password auth)
-  socket.on("client-auto-connected", (data) => {
-    console.log("Client auto-connected with password:", data.clientId);
-    currentClientId = data.clientId;
-    win.webContents.send('status-update', `Client ${data.clientId} connected using saved password`);
-  });
-
   // Handle connection requests
   socket.on("connection-request", (data) => {
     console.log("Connection request from:", data.clientId);
@@ -175,27 +168,6 @@ function createWindow() {
     } else {
       win.webContents.send('status-update', 'Not connected to server');
     }
-  });
-
-  // Handle set password request from renderer
-  ipcMain.on('set-access-password', (event, data) => {
-    if (socket.connected && currentClientId) {
-      console.log(`Setting password for client: ${currentClientId}`);
-      socket.emit("set-access-password", {
-        password: data.password,
-        clientId: currentClientId
-      });
-    } else {
-      win.webContents.send('password-response', {
-        success: false,
-        message: 'Not connected to server or no client connected'
-      });
-    }
-  });
-
-  // Handle password response from server
-  socket.on("password-response", (data) => {
-    win.webContents.send('password-response', data);
   });
 
   // Handle controller connection
