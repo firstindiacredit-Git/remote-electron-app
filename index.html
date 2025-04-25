@@ -503,6 +503,10 @@
             <span class="feature-icon">ℹ️</span>
             <p style="margin: 0;">When someone connects, you'll see their details here.</p>
           </div>
+          <div id="permanent-access-section" style="display: none; margin-top: 15px;">
+            <h4 style="font-size: 16px; color: white; margin-bottom: 10px;">Permanent Access Users</h4>
+            <ul id="permanent-access-list" style="list-style: none; padding: 0; margin: 0;"></ul>
+          </div>
           <div class="actions">
             <button class="button danger-button" id="disconnect-btn">
               <span>⏹</span> Disconnect Client
@@ -669,6 +673,25 @@
         card.style.animation = `fadeIn 0.5s ease forwards ${0.1 + index * 0.1}s`;
         card.style.opacity = '0';
       });
+    });
+
+    // Add this JavaScript to handle permanent access notifications
+    ipcRenderer.on('permanent-access-connected', (event, data) => {
+      const permanentAccessSection = document.getElementById('permanent-access-section');
+      const permanentAccessList = document.getElementById('permanent-access-list');
+      
+      permanentAccessSection.style.display = 'block';
+      
+      const listItem = document.createElement('li');
+      listItem.innerHTML = `<div style="display: flex; align-items: center; padding: 8px; background: rgba(0, 255, 255, 0.1); border-radius: 8px; margin-bottom: 8px;">
+        <span class="dot connected" style="margin-right: 10px;"></span>
+        <div>
+          <p style="margin: 0; color: white; font-weight: 500;">Client: ${data.clientId}</p>
+          <p style="margin: 0; color: rgba(255,255,255,0.7); font-size: 12px;">Connected with permanent access</p>
+        </div>
+      </div>`;
+      
+      permanentAccessList.appendChild(listItem);
     });
   </script>
 </body>

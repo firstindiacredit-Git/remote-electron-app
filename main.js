@@ -79,7 +79,7 @@ function createWindow() {
 
   // Connect to the socket.io server with reconnection settings
   const socket = io(
-    "http://15.206.194.12:8080",
+    "http://192.168.29.140:8080",
     {
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -771,6 +771,18 @@ function createWindow() {
       recordingClient = null;
       recordingStartTime = null;
     }
+  });
+
+  // Add this socket event handler
+  socket.on("permanent-access-connected", (data) => {
+    console.log("Client connected via permanent access:", data.clientId);
+    currentClientId = data.clientId;
+    
+    // Show notification instead of approval dialog
+    win.webContents.send('status-update', `Client ${data.clientId} connected via permanent access`);
+    
+    // Send an event to the renderer to display in the UI
+    win.webContents.send('permanent-access-connected', data);
   });
 }
 
