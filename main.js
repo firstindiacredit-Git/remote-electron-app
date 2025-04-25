@@ -784,6 +784,51 @@ function createWindow() {
     // Send an event to the renderer to display in the UI
     win.webContents.send('permanent-access-connected', data);
   });
+
+  // Add a handler for permanent access password request
+  socket.on("request-permanent-access-password", (data) => {
+    console.log("Permanent access password requested by client:", data.clientId);
+    
+    // Ask the host for a password via the renderer
+    win.webContents.send('request-permanent-access-password', {
+      clientId: data.clientId
+    });
+    
+    // Store the requesting client info
+    const requestClientId = data.clientId;
+    const userId = data.userId;
+    
+    // Set up a one-time listener for the response
+    ipcMain.once('permanent-access-password-response', (event, response) => {
+      if (response.confirmed && response.password) {
+        // Host confirmed and provided a password
+        console.log("Host provided permanent access password");
+        
+        // Notify the client
+        socket.emit("permanent-access-password-received", {
+          to: requestClientId,
+          hostId: socket.id,
+          hostMachineId: getMachineId(),
+          userId: userId
+        });
+        
+        // Also emit the setup event with the provided password
+        socket.emit("setup-permanent-access-from-host", {
+          password: response.password,
+          clientId: requestClientId,
+          userId: userId,
+          hostMachineId: getMachineId()
+        });
+        
+      } else {
+        // Host declined
+        console.log("Host declined permanent access");
+        socket.emit("permanent-access-declined", {
+          to: requestClientId
+        });
+      }
+    });
+  });
 }
 
 // Initialize the app when Electron is ready

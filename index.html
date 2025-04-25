@@ -535,6 +535,23 @@
     </div>
   </div>
 
+  <!-- Add this modal for permanent access password after the connection-request-modal -->
+  <div id="permanent-access-modal" class="modal-overlay">
+    <div class="modal-container">
+      <h3 style="margin-bottom: 15px; color: white; font-size: 22px;">Set Permanent Access</h3>
+      <div class="connection-info">
+        <p style="margin-bottom: 5px; color: rgba(255,255,255,0.7);">A user wants to create permanent access to your computer</p>
+        <p style="margin-bottom: 10px; color: white;">Client ID: <strong id="permanent-access-client-id" style="color: #00BFFF;"></strong></p>
+        <input type="password" id="permanent-access-password" placeholder="Enter a secure password" style="width: 100%; padding: 8px; margin-top: 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white;">
+        <p style="margin-top: 5px; font-size: 12px; color: rgba(255,255,255,0.5);">Password must be at least 4 characters</p>
+      </div>
+      <div class="cta-buttons">
+        <button class="button primary-button" id="confirm-permanent-access">Confirm</button>
+        <button class="button danger-button" id="cancel-permanent-access">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const { ipcRenderer } = require('electron');
     
@@ -692,6 +709,44 @@
       </div>`;
       
       permanentAccessList.appendChild(listItem);
+    });
+
+    // Add this JavaScript to handle permanent access password request
+    ipcRenderer.on('request-permanent-access-password', (event, data) => {
+      const modal = document.getElementById('permanent-access-modal');
+      const modalContent = modal.querySelector('.modal-container');
+      document.getElementById('permanent-access-client-id').textContent = data.clientId;
+      document.getElementById('permanent-access-password').value = '';
+      
+      modal.style.display = 'block';
+      // Trigger reflow
+      modal.offsetHeight;
+      
+      modal.classList.add('modal-visible');
+      modalContent.classList.add('modal-content-visible');
+    });
+
+    // Confirm permanent access password
+    document.getElementById('confirm-permanent-access').addEventListener('click', () => {
+      const password = document.getElementById('permanent-access-password').value;
+      
+      if (password && password.length >= 4) {
+        ipcRenderer.send('permanent-access-password-response', {
+          password: password,
+          confirmed: true
+        });
+        hideModal('permanent-access-modal');
+      } else {
+        alert('Please enter a password with at least 4 characters');
+      }
+    });
+
+    // Cancel permanent access
+    document.getElementById('cancel-permanent-access').addEventListener('click', () => {
+      ipcRenderer.send('permanent-access-password-response', {
+        confirmed: false
+      });
+      hideModal('permanent-access-modal');
     });
   </script>
 </body>
