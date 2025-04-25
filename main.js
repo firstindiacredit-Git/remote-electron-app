@@ -785,49 +785,49 @@ function createWindow() {
     win.webContents.send('permanent-access-connected', data);
   });
 
-  // Add a handler for permanent access password request
+  // Handle permanent access password request
   socket.on("request-permanent-access-password", (data) => {
-    console.log("Permanent access password requested by client:", data.clientId);
+    console.log("Permanent access password requested by:", data.clientId);
     
-    // Ask the host for a password via the renderer
+    // Show password input modal to host
     win.webContents.send('request-permanent-access-password', {
       clientId: data.clientId
     });
     
-    // Store the requesting client info
-    const requestClientId = data.clientId;
+    // Save client info for later use
+    const requestingClient = data.clientId;
     const userId = data.userId;
     
-    // Set up a one-time listener for the response
+    // Handle host response with password
     ipcMain.once('permanent-access-password-response', (event, response) => {
       if (response.confirmed && response.password) {
-        // Host confirmed and provided a password
         console.log("Host provided permanent access password");
         
-        // Notify the client
-        socket.emit("permanent-access-password-received", {
-          to: requestClientId,
+        // Send the password to server to set up permanent access
+        socket.emit("setup-permanent-access", {
           hostId: socket.id,
-          hostMachineId: getMachineId(),
-          userId: userId
-        });
-        
-        // Also emit the setup event with the provided password
-        socket.emit("setup-permanent-access-from-host", {
           password: response.password,
-          clientId: requestClientId,
           userId: userId,
-          hostMachineId: getMachineId()
+          clientId: requestingClient,
+          machineId: getMachineId()
         });
         
+        win.webContents.send('status-update', 'स्थायी एक्सेस पासवर्ड भेज दिया गया है');
       } else {
-        // Host declined
-        console.log("Host declined permanent access");
-        socket.emit("permanent-access-declined", {
-          to: requestClientId
+        console.log("Host declined permanent access request");
+        socket.emit("permanent-access-request-declined", {
+          to: requestingClient
         });
+        
+        win.webContents.send('status-update', 'स्थायी एक्सेस अनुरोध अस्वीकार किया गया');
       }
     });
+  });
+
+  // Handle permanent access granted notification
+  socket.on("permanent-access-granted", (data) => {
+    console.log("Permanent access granted to:", data.clientId);
+    win.webContents.send('status-update', `उपयोगकर्ता ${data.clientId} को स्थायी एक्सेस दिया गया`);
   });
 }
 
