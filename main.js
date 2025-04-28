@@ -79,7 +79,7 @@ function createWindow() {
 
   // Connect to the socket.io server with reconnection settings
   const socket = io(
-    "http://192.168.29.140:8080",
+    "https://flydesk.pizeonfly.com",
     {
       reconnection: true,
       reconnectionAttempts: Infinity,
