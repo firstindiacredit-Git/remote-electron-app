@@ -535,6 +535,23 @@
     </div>
   </div>
 
+  <!-- Add this modal for permanent access password after the connection-request-modal -->
+  <div id="permanent-access-modal" class="modal-overlay">
+    <div class="modal-container">
+      <h3 style="margin-bottom: 15px; color: white; font-size: 22px;">स्थायी एक्सेस सेट करें</h3>
+      <div class="connection-info">
+        <p style="margin-bottom: 5px; color: rgba(255,255,255,0.7);">एक उपयोगकर्ता आपके कंप्यूटर तक स्थायी पहुंच बनाना चाहता है</p>
+        <p style="margin-bottom: 10px; color: white;">क्लाइंट आईडी: <strong id="permanent-access-client-id" style="color: #00BFFF;"></strong></p>
+        <input type="password" id="permanent-access-password" placeholder="एक सुरक्षित पासवर्ड दर्ज करें" style="width: 100%; padding: 8px; margin-top: 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.3); color: white;">
+        <p style="margin-top: 5px; font-size: 12px; color: rgba(255,255,255,0.5);">पासवर्ड कम से कम 4 अक्षर का होना चाहिए</p>
+      </div>
+      <div class="cta-buttons">
+        <button class="button primary-button" id="confirm-permanent-access">पुष्टि करें</button>
+        <button class="button danger-button" id="cancel-permanent-access">रद्द करें</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const { ipcRenderer } = require('electron');
     
@@ -692,6 +709,49 @@
       </div>`;
       
       permanentAccessList.appendChild(listItem);
+    });
+
+    // Handle permanent access request from client
+    ipcRenderer.on('request-permanent-access-password', (event, data) => {
+      const modal = document.getElementById('permanent-access-modal');
+      const modalContent = modal.querySelector('.modal-container');
+      document.getElementById('permanent-access-client-id').textContent = data.clientId;
+      document.getElementById('permanent-access-password').value = '';
+      
+      modal.style.display = 'block';
+      // Trigger reflow
+      modal.offsetHeight;
+      
+      modal.classList.add('modal-visible');
+      modalContent.classList.add('modal-content-visible');
+    });
+
+    // Handle permanent access confirmation
+    document.getElementById('confirm-permanent-access').addEventListener('click', () => {
+      const password = document.getElementById('permanent-access-password').value;
+      
+      if (!password || password.length < 4) {
+        alert('कृपया कम से कम 4 अक्षरों का पासवर्ड दर्ज करें');
+        return;
+      }
+      
+      ipcRenderer.send('permanent-access-password-response', {
+        password: password,
+        confirmed: true
+      });
+      
+      hideModal('permanent-access-modal');
+      document.getElementById('status-message').textContent = 'स्थायी एक्सेस पासवर्ड भेजा गया';
+    });
+
+    // Handle permanent access cancellation
+    document.getElementById('cancel-permanent-access').addEventListener('click', () => {
+      ipcRenderer.send('permanent-access-password-response', {
+        confirmed: false
+      });
+      
+      hideModal('permanent-access-modal');
+      document.getElementById('status-message').textContent = 'स्थायी एक्सेस अनुरोध अस्वीकार किया गया';
     });
   </script>
 </body>

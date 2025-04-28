@@ -784,6 +784,51 @@ function createWindow() {
     // Send an event to the renderer to display in the UI
     win.webContents.send('permanent-access-connected', data);
   });
+
+  // Handle permanent access password request
+  socket.on("request-permanent-access-password", (data) => {
+    console.log("Permanent access password requested by:", data.clientId);
+    
+    // Show password input modal to host
+    win.webContents.send('request-permanent-access-password', {
+      clientId: data.clientId
+    });
+    
+    // Save client info for later use
+    const requestingClient = data.clientId;
+    const userId = data.userId;
+    
+    // Handle host response with password
+    ipcMain.once('permanent-access-password-response', (event, response) => {
+      if (response.confirmed && response.password) {
+        console.log("Host provided permanent access password");
+        
+        // Send the password to server to set up permanent access
+        socket.emit("setup-permanent-access", {
+          hostId: socket.id,
+          password: response.password,
+          userId: userId,
+          clientId: requestingClient,
+          machineId: getMachineId()
+        });
+        
+        win.webContents.send('status-update', 'स्थायी एक्सेस पासवर्ड भेज दिया गया है');
+      } else {
+        console.log("Host declined permanent access request");
+        socket.emit("permanent-access-request-declined", {
+          to: requestingClient
+        });
+        
+        win.webContents.send('status-update', 'स्थायी एक्सेस अनुरोध अस्वीकार किया गया');
+      }
+    });
+  });
+
+  // Handle permanent access granted notification
+  socket.on("permanent-access-granted", (data) => {
+    console.log("Permanent access granted to:", data.clientId);
+    win.webContents.send('status-update', `उपयोगकर्ता ${data.clientId} को स्थायी एक्सेस दिया गया`);
+  });
 }
 
 // Initialize the app when Electron is ready
