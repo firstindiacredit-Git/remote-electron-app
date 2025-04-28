@@ -852,3 +852,6 @@ app.on('before-quit', () => {
 });
 
 module.exports = { createWindow };
+
+
+//
