@@ -20,7 +20,7 @@ function createWindow() {
 
   // Connect to the socket.io server
   // const socket = io("http://15.206.194.12:8080"); // Change to your server IP if needed
-  const socket = io("http://192.168.29.140:8080"); // Change to your server IP if needed
+  const socket = io("http://192.168.29.140:8080", "http://localhost:5173"); // Change to your server IP if needed
 
   // Handle connection
   socket.on("connect", () => {
