@@ -527,6 +527,32 @@
       <div class="cta-buttons">
         <button class="button primary-button" id="accept-connection">Accept</button>
         <button class="button danger-button" id="reject-connection">Reject</button>
+        <button class="button" id="setup-permanent-access" style="background: rgba(0, 183, 255, 0.1); color: #00BFFF; border: 1px solid rgba(0, 183, 255, 0.3);">Setup Permanent Access</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="permanent-access-modal" class="modal-overlay">
+    <div class="modal-container">
+      <h3 style="margin-bottom: 15px; color: white; font-size: 22px;">Setup Permanent Access</h3>
+      <div class="connection-info">
+        <p style="margin-bottom: 15px; color: rgba(255,255,255,0.7);">Set up permanent access for this connection. You won't need to approve future connections from this user.</p>
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; color: white; margin-bottom: 5px; text-align: left;">Label (e.g., "My Phone", "Work Laptop"):</label>
+          <input type="text" id="permanent-access-label" placeholder="Enter a label" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: white; font-size: 14px;">
+        </div>
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; color: white; margin-bottom: 5px; text-align: left;">Password:</label>
+          <input type="password" id="permanent-access-password" placeholder="Enter a password" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: white; font-size: 14px;">
+        </div>
+        <div style="margin-bottom: 15px;">
+          <label style="display: block; color: white; margin-bottom: 5px; text-align: left;">Confirm Password:</label>
+          <input type="password" id="permanent-access-confirm-password" placeholder="Confirm password" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.05); color: white; font-size: 14px;">
+        </div>
+      </div>
+      <div class="cta-buttons">
+        <button class="button primary-button" id="save-permanent-access">Save & Accept</button>
+        <button class="button danger-button" id="cancel-permanent-access">Cancel</button>
       </div>
     </div>
   </div>
@@ -642,6 +668,67 @@
         pendingClientId = null;
       }
     });
+
+    // Setup permanent access
+    document.getElementById('setup-permanent-access').addEventListener('click', () => {
+      hideModal('connection-request-modal');
+      showModal('permanent-access-modal');
+    });
+
+    // Save permanent access
+    document.getElementById('save-permanent-access').addEventListener('click', () => {
+      const label = document.getElementById('permanent-access-label').value.trim();
+      const password = document.getElementById('permanent-access-password').value;
+      const confirmPassword = document.getElementById('permanent-access-confirm-password').value;
+
+      if (!label) {
+        alert('Please enter a label');
+        return;
+      }
+
+      if (!password) {
+        alert('Please enter a password');
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        alert('Passwords do not match');
+        return;
+      }
+
+      if (password.length < 4) {
+        alert('Password must be at least 4 characters long');
+        return;
+      }
+
+      // Send permanent access setup request
+      ipcRenderer.send('setup-permanent-access', {
+        clientId: pendingClientId,
+        label: label,
+        password: password
+      });
+
+      hideModal('permanent-access-modal');
+      document.getElementById('status-message').textContent = 'Setting up permanent access...';
+    });
+
+    // Cancel permanent access setup
+    document.getElementById('cancel-permanent-access').addEventListener('click', () => {
+      hideModal('permanent-access-modal');
+      showModal('connection-request-modal');
+    });
+
+    function showModal(modalId) {
+      const modal = document.getElementById(modalId);
+      const modalContent = modal.querySelector('.modal-container');
+      
+      modal.style.display = 'block';
+      // Trigger reflow
+      modal.offsetHeight;
+      
+      modal.classList.add('modal-visible');
+      modalContent.classList.add('modal-content-visible');
+    }
     
     function hideModal(modalId) {
       const modal = document.getElementById(modalId);

@@ -171,6 +171,16 @@ function createWindow() {
     }
   });
 
+  // Handle permanent access setup from renderer
+  ipcMain.on('setup-permanent-access', (event, data) => {
+    if (socket.connected) {
+      socket.emit("set-permanent-access", data);
+      win.webContents.send('status-update', 'Setting up permanent access...');
+    } else {
+      win.webContents.send('status-update', 'Not connected to server');
+    }
+  });
+
   // Handle controller connection
   socket.on("controller-connected", (controllerId) => {
     console.log("Controller connected:", controllerId);
@@ -228,6 +238,22 @@ function createWindow() {
       screenShareInterval = null;
     }
     win.webContents.send('status-update', 'Controller disconnected');
+  });
+
+  // Handle permanent access response
+  socket.on("permanent-access-response", (data) => {
+    if (data.success) {
+      win.webContents.send('status-update', 'Permanent access set successfully! Connection accepted.');
+      // Accept the connection automatically
+      if (currentClientId) {
+        socket.emit("connection-response", {
+          clientId: currentClientId,
+          accepted: true
+        });
+      }
+    } else {
+      win.webContents.send('status-update', `Permanent access error: ${data.message}`);
+    }
   });
 
   // Handle mouse movement with improved positioning
